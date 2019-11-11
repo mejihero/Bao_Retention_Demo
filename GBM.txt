@@ -1,0 +1,144 @@
+####################################################################
+##############   import library   ##################################
+####################################################################
+
+
+
+import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.externals import joblib
+
+%matplotlib inline
+sns.set(style = 'white', font_scale = 0.9)
+
+
+from sklearn.externals import joblib
+
+
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import GridSearchCV
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report
+from sklearn.metrics import roc_auc_score
+
+import scikitplot as skplt
+
+
+
+
+
+
+
+#######################################################################################
+####################  define the main function   ######################################
+#######################################################################################
+
+
+
+def classifier_mod(X_train, y_train, X_test, y_test, sampName):
+    
+    ## print the shape of imported dataset
+    print('X_train shape: ', X_train.shape)
+    print('y_train shape: ', y_train.shape)
+    print('X_test shape: ', X_test.shape)
+    print('y_test shape: ', y_test.shape)
+    
+    ## grid search for the optimal hyperparameters
+    model = GradientBoostingClassifier(random_state = 123)
+    
+    param_grid = {'n_estimators': [100,200], 'learning_rate': [0.05, 0.1],
+                 'max_depth': [5,7,8], 'min_samples_split': [8,12], 'min_samples_leaf': [5,7],
+                 'max_features': [10,20], 'subsample': [0.6, 0.7]}
+    
+    grid = GridSearchCV(estimator = model, param_grid = param_grid, scoring = 'roc_auc', n_jobs = -1, verbose = 1)
+    grid.fit(X_train, y_train)
+    
+    print(grid.best_score_)
+    print(grid.best_params_)
+    
+    ## fit the model with the optimal hyperparameters
+    classifier = GradientBoostingClassifier(random_state = 123,
+                             n_estimators = grid.best_params_['n_estimators'],
+                             learning_rate = grid.best_params_['learning_rate'],
+                             max_depth = grid.best_params_['max_depth'],
+                             min_samples_split = grid.best_params_['min_samples_split'],
+                             min_samples_leaf = grid.best_params_['min_samples_leaf'],
+                             max_features = grid.best_params_['max_features'],
+                             subsample = grid.best_params_['subsample'])
+    
+    classifier.fit(X_train, y_train)
+    
+    ## pickle the fitted model
+    joblib.dump(classifier, 'gbm_'+sampName+'.pkl')
+    
+    ## pickle the predicted responses
+    y_pred = classifier.predict(X_test)
+    y_pred_prob = classifier.predict_proba(X_test)
+    
+    joblib.dump(y_pred, 'y_pred_'+sampName+'.pkl')
+    joblib.dump(y_pred_prob, 'y_pred_prob_'+sampName+'.pkl')
+    
+    # printout metrics for model performance
+    print('Accuracy score: ', accuracy_score(y_test, y_pred))
+    
+    print('Confusion matrix:\n', confusion_matrix(y_test, y_pred))
+    skplt.metrics.plot_confusion_matrix(y_test, y_pred)
+    plt.savefig('confusion_matrix_gbm.png')
+    
+    skplt.metrics.plot_confusion_matrix(y_test, y_pred, normalize = True)
+    plt.savefig('confusion_matrix_gbm_norm.png')
+    
+    
+    print('Classification report:\n', classification_report(y_test, y_pred))
+    
+    print('ROC_AUC_score: ', roc_auc_score(y_test, y_pred))
+    skplt.metrics.plot_roc(y_test, y_pred_prob)
+    plt.savefig('roc_gbm.png')
+    
+    skplt.metrics.plot_precision_recall_curve(y_test, y_pred_prob)
+    plt.savefig('pr_gbm.png')
+    
+    # printout feature importances
+    feature_import = pd.DataFrame(data = classifier.feature_importances_, index = X_test.columns.values, columns = ['values'])
+    feature_import.sort_values(['values'], ascending = False, inplace = True)
+    feature_import.reset_index(level = 0, inplace = True)
+    print(feature_import)
+    
+    # feature importances plot
+    plt.figure(figsize = (35,20))
+    sns.set(style = 'white', font_scale = 2)
+    
+    ax = sns.barplot(x = 'values', y = 'index', data = feature_import, palette = 'deep')
+    ax.set_title('Variables Imporatnce Plot of GMB')
+    plt.savefig('importance_gbm.png')
+    
+    return classifier
+
+
+
+
+
+###########################################################################################
+##################################   call the function  ###################################
+
+
+X_train = joblib.load('X_train_adasyn.pkl')
+X_test = pd.read_pickle('X_test.pkl')
+y_train = joblib.load('y_train_adasyn.pkl')
+y_test = pd.read_pickle('y_test_s.pkl')
+
+
+
+
+
+classifier_mod(X_train, y_train, X_test, y_test, 'adasyn')
+
+
+
+
+

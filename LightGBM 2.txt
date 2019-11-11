@@ -1,0 +1,158 @@
+#########################################################
+################   LightGBM  #############################
+#########################################################
+
+
+#########################################################
+###########      import libraries     ###################
+
+import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.externals import joblib
+
+%matplotlib inline
+sns.set(style = 'white', font_scale = 0.9)
+
+
+import lightgbm as lgb
+from sklearn.model_selection import GridSearchCV
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report
+from sklearn.metrics import roc_auc_score
+
+import scikitplot as skplt
+
+
+
+
+######################################################
+#############   define the main function   ###########
+
+
+def classifier_mod(X_train, y_train, X_test, y_test, sampName):
+    
+    ## print the shape of imported dataset
+    print('X_train shape: ', X_train.shape)
+    print('y_train shape: ', y_train.shape)
+    print('X_test shape: ', X_test.shape)
+    print('y_test shape: ', y_test.shape)
+    
+    ## grid search for the optimal hyperparameters
+    mod = lgb.LGBMClassifier(random_state = 123) 
+    
+    param_grid = {'max_depth': [15, 20, 25, 30],
+               'num_leaves': [10, 20, 30],
+              'learning_rate': [0.01, 0.1, 0.5],
+              'n_estimator': [100, 200,300,400,500],
+              'reg_alpha': [0.1, 0.4, 0.5, 0.6],
+              'reg_lambda': [0.1, 0.4, 0.5, 0.6]}    
+
+    
+    grid = GridSearchCV(estimator = mod,
+                    param_grid = param_grid,
+                    scoring = 'roc_auc',
+                    cv = 5,
+                    n_jobs = -1,
+                    verbose = 1)
+
+    #feature 0-5 are categorical variables
+    grid.fit(X_train, y_train,
+              categorical_feature = [0,1,2,3,4,5])
+    
+    print(grid.best_score_)
+    print(grid.best_params_)
+    
+    ## fit the model with the optimal hyperparameters
+    classifier = lgb.LGBMClassifier(random_state = 123,
+                                max_depth = grid.best_params_['max_depth'],
+                                 num_leaves = grid.best_params_['num_leaves'],
+                                learning_rate = grid.best_params_['learning_rate'],
+                                n_estimator = grid.best_params_['n_estimator'],
+                                reg_alpha = grid.best_params_['reg_alpha'],
+                                reg_lambda = grid.best_params_['reg_lambda'])
+    
+    
+    classifier.fit(X_train, y_train,
+                   categorical_feature = [0,1,2,3,4,5])
+
+    
+    ## pickle the fitted model
+    joblib.dump(classifier, 'lgbm_'+sampName+'.pkl')
+    
+    ## pickle the predicted responses
+    y_pred = classifier.predict(X_test)
+    y_pred_prob = classifier.predict_proba(X_test)
+    
+    joblib.dump(y_pred, 'y_pred_'+sampName+'.pkl')
+    joblib.dump(y_pred_prob, 'y_pred_prob_'+sampName+'.pkl')
+    
+    # printout metrics for model performance
+    print('Accuracy score: ', accuracy_score(y_test, y_pred))
+    
+    print('Confusion matrix:\n', confusion_matrix(y_test, y_pred))
+    skplt.metrics.plot_confusion_matrix(y_test, y_pred)
+    plt.savefig('confusion_matrix_lgbm.png')
+    
+    skplt.metrics.plot_confusion_matrix(y_test, y_pred, normalize = True)
+    plt.savefig('confusion_matrix_lgbm_norm.png')
+    
+    
+    print('Classification report:\n', classification_report(y_test, y_pred))
+    
+    print('ROC_AUC_score: ', roc_auc_score(y_test, y_pred))
+    skplt.metrics.plot_roc(y_test, y_pred_prob)
+    plt.savefig('roc_lgbm.png')
+    
+    skplt.metrics.plot_precision_recall_curve(y_test, y_pred_prob)
+    plt.savefig('pr_lgbm.png')
+    
+    # printout feature importances
+    feature_import = pd.DataFrame(data = classifier.feature_importances_, index = X_test.columns.values, columns = ['values'])
+    feature_import.sort_values(['values'], ascending = False, inplace = True)
+    feature_import.reset_index(level = 0, inplace = True)
+    print(feature_import)
+    
+    # feature importances plot
+    plt.figure(figsize = (35,20))
+    sns.set(style = 'white', font_scale = 2)
+    
+    ax = sns.barplot(x = 'values', y = 'index', data = feature_import, palette = 'deep')
+    ax.set_title('Variables Imporatnce Plot of LightGBM')
+    plt.savefig('importance_lgmb.png')
+    
+    return classifier
+
+
+
+
+
+
+
+########################################################
+##########   call the main function   ##################
+
+import os
+
+os.chdir('C:/Users/LUY1/Desktop/customer churn data/data')
+print(os.getcwd())
+
+
+
+X_train = joblib.load('X_train.pkl')
+X_test = pd.read_pickle('X_test.pkl')
+y_train = joblib.load('y_train.pkl')
+y_test = pd.read_pickle('y_test_s.pkl')
+
+
+
+
+os.chdir('C:/Users/LUY1/Desktop/customer churn data/models')
+print(os.getcwd())
+
+classifier_mod(X_train, y_train, X_test, y_test, 'nosamp')
+

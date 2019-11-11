@@ -1,0 +1,111 @@
+##############################################################
+#########  this is classification from LightGBM    ###########
+
+
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import GridSearchCV
+
+
+# initial model
+mod = lgb.LGBMClassifier(random_state = 123)
+
+
+#grid of hyperparameters
+param_grid = {'max_depth': [15, 20, 25, 30],
+               'num_leaves': [10, 20, 30],
+              'learning_rate': [0.01, 0.1, 0.5],
+              'n_estimator': [100, 200,300,400,500],
+              'reg_alpha': [0.1, 0.4, 0.5, 0.6],
+              'reg_lambda': [0.1, 0.4, 0.5, 0.6]}
+
+
+
+# grid search
+grid = GridSearchCV(estimator = mod,
+                    param_grid = param_grid5,
+                    scoring = 'roc_auc',
+                    cv = 5,
+                    n_jobs = -1,
+                    verbose = 1)
+
+#column/feature 0-5 are categorical variables
+grid.fit(X_train, y_train,
+         categorical_feature = [0,1,2,3,4,5])
+
+
+#best hyper-parameter
+print(grid.best_score_)
+print(grid.best_params_)
+
+
+
+# fit model with optimal hyperparameters
+classifier = lgb.LGBMClassifier(random_state = 123,
+                                max_depth = grid.best_params_['max_depth'],
+                                 num_leaves = grid.best_params_['num_leaves'],
+                                learning_rate = grid.best_params_['learning_rate'],
+                                n_estimator = grid.best_params_['n_estimator'],
+                                reg_alpha = grid.best_params_['reg_alpha'],
+                                reg_lambda = grid.best_params_['reg_lambda'])
+
+
+
+
+#column/feature 0-5 are categorical variables
+classifier.fit(X_train, y_train,
+               categorical_feature = [0,1,2,3,4,5])
+
+
+
+
+#predictions
+
+y_pred = classifier.predict(X_test)
+y_pred_prob = classifier.predict_proba(X_test)
+
+
+
+# model performance analysis
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report
+from sklearn.metrics import roc_auc_score
+import scikitplot as skplt
+
+#confusion matrix
+skplt.metrics.plot_confusion_matrix(y_test, y_pred)
+
+
+#ROC curve
+skplt.metrics.plot_roc(y_test, y_pred_prob)
+
+
+#Precision-Recall Cruve
+skplt.metrics.plot_precision_recall_curve(y_test, y_pred_prob)
+
+
+
+# Variable imporatnce plot
+feature_imp = pd.DataFrame(data = classifier.feature_importances_, index = X_test.columns.values, columns = ['values'])
+feature_imp.sort_values(['values'], ascending = False, inplace = True)
+feature_imp.reset_index(level = 0, inplace = True)
+
+feature_imp
+
+
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+
+ax = sns.barplot(x = 'values', y = 'index', data = feature_imp, palette = 'deep')
+ax.set_title('Variable Importance Plot of LightGBM')
+
+
+

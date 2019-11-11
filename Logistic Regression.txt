@@ -1,0 +1,152 @@
+##########################################################################
+##################    import libraries  ##################################
+
+
+
+
+import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.externals import joblib
+
+%matplotlib inline
+sns.set(style = 'white', font_scale = 0.9)
+
+
+from sklearn.externals import joblib
+
+
+from sklearn.linear_model import SGDClassifier
+from sklearn.model_selection import GridSearchCV
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report
+from sklearn.metrics import roc_auc_score
+
+import scikitplot as skplt
+
+
+
+
+##############################################################################
+#####################  define the main function   ############################
+
+# function 1
+from sklearn.preprocessing import MinMaxScaler
+
+def ranking(ranks, names, order = 1):
+    minmax = MinMaxScaler()
+    ranks = minmax.fit_transform(order * np.array(ranks).T).T[0]
+    ranks = map(lambda x: round(x, 2), ranks)
+    return dict(zip(names, ranks))
+
+
+
+
+
+#function 2
+def classifier_mod(X_train, y_train, X_test, y_test, sampName):
+    
+    ## print the shape of imported dataset
+    print('X_train shape: ', X_train.shape)
+    print('y_train shape: ', y_train.shape)
+    print('X_test shape: ', X_test.shape)
+    print('y_test shape: ', y_test.shape)
+    
+    ## grid search for the optimal hyperparameters
+    model = SGDClassifier(random_state = 123, loss = 'log')
+    
+    param_grid = {'n_iter': [50,200,500,1000,2000,5000], 'alpha': [0.1,0.01,0.001,0.0001,0.00001,0.000001],
+                 'penalty': ['l1', 'l2', 'elasticnet']}
+    
+    grid = GridSearchCV(estimator = model, param_grid = param_grid, scoring = 'roc_auc', n_jobs = -1, verbose = 1)
+    grid.fit(X_train, y_train)
+    
+    print(grid.best_score_)
+    print(grid.best_params_)
+    
+    ## fit the model with the optimal hyperparameters
+    classifier = SGDClassifier(random_state = 123, 
+                              loss = 'log',
+                              n_iter = grid.best_params_['n_iter'],
+                              alpha = grid.best_params_['alpha'],
+                              penalty = grid.best_params_['penalty'])
+    
+    classifier.fit(X_train, y_train)
+    
+    ## pickle the fitted model
+    joblib.dump(classifier, 'lr_'+sampName+'.pkl')
+    
+    ## pickle the predicted responses
+    y_pred = classifier.predict(X_test)
+    y_pred_prob = classifier.predict_proba(X_test)
+    
+    joblib.dump(y_pred, 'y_pred_'+sampName+'.pkl')
+    joblib.dump(y_pred_prob, 'y_pred_prob_'+sampName+'.pkl')
+    
+    # printout metrics for model performance
+    print('Accuracy score: ', accuracy_score(y_test, y_pred))
+    
+    print('Confusion matrix:\n', confusion_matrix(y_test, y_pred))
+    skplt.metrics.plot_confusion_matrix(y_test, y_pred)
+    plt.savefig('confusion_matrix_lr.png')
+    
+    skplt.metrics.plot_confusion_matrix(y_test, y_pred, normalize = True)
+    plt.savefig('confusion_matrix_lr_nrom.png')
+    
+    print('Classification report:\n', classification_report(y_test, y_pred))
+    
+    print('ROC_AUC_score: ', roc_auc_score(y_test, y_pred))
+    skplt.metrics.plot_roc(y_test, y_pred_prob)
+    plt.savefig('roc_lr.png')
+    
+    skplt.metrics.plot_precision_recall_curve(y_test, y_pred_prob)
+    plt.savefig('pr_lr.png')
+    
+    # printout feature importances
+    feature_import = pd.Series(ranking(np.abs(classifier.coef_), X_train.columns.values), name = 'values')
+    feature_import.index.name = 'index'
+    feature_import = feature_import.reset_index()
+    feature_import.sort_values('values', ascending = False, inplace = True)
+    print(feature_import)
+    
+    # feature importances plot
+    plt.figure(figsize = (35,20))
+    sns.set(style = 'white', font_scale = 2)
+    
+    ax = sns.barplot(x = 'values', y = 'index', data = feature_import, palette = 'deep')
+    ax.set_title('Variables Importance Plot of Logistic Regression')
+    plt.savefig('importance_lr.png')
+    
+    return classifier
+
+
+
+
+##################################################################################################
+##########################   call the main function     ##########################################
+
+
+X_train = joblib.load('X_train_adasyn.pkl')
+X_test = pd.read_pickle('X_test.pkl')
+y_train = joblib.load('y_train_adasyn.pkl')
+y_test = pd.read_pickle('y_test_s.pkl')
+
+
+
+classifier_mod(X_train, y_train, X_test, y_test, 'adasyn')
+
+
+
+
+
+
+
+
+
+
+
+
